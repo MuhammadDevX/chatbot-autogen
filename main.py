@@ -11,7 +11,11 @@ from sqlalchemy import Column, String, DateTime, ForeignKey
 from sqlalchemy.ext.asyncio import AsyncSession, create_async_engine
 from sqlalchemy.orm import declarative_base, relationship, sessionmaker
 from sqlalchemy.future import select
-from agents import Agent, Runner, ItemHelpers
+from autogen_ext.models.openai import OpenAIChatCompletionClient
+from autogen_agentchat.messages import TextMessage
+from autogen_agentchat.agents import AssistantAgent
+from autogen_core import CancellationToken
+import asyncio
 from openai.types.responses import ResponseTextDeltaEvent
 from dotenv import load_dotenv
 import jwt
@@ -25,6 +29,16 @@ OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 JWT_SECRET = os.getenv("JWT_SECRET", "your-secret-key-change-in-production")
 JWT_ALGORITHM = "HS256"
 JWT_EXPIRATION_HOURS = 24
+
+openai_client = OpenAIChatCompletionClient(model="gpt-4o-mini")
+system_message = "You are a helpful AI assistant. Respond to the user's message while considering the conversation history. Be conversational and helpful."
+openai_agent = AssistantAgent(
+                name="openai_agent",
+                model_client=openai_client,
+                model_client_stream=True,
+                system_message=system_message
+            )
+
 
 # SQLAlchemy async setup
 engine = create_async_engine(DATABASE_URL, echo=False)
@@ -392,60 +406,29 @@ async def chat_stream(
     
     async def event_generator():
         assistant_response = ""
-        
         try:
-            # Create agent per request
-            agent = Agent(
-                name="Assistant",
-                instructions="You are a helpful AI assistant. Respond to the user's message while considering the conversation history. Be conversational and helpful.",
-                model='gpt-4o-mini'
-            )
             
-            # Prepare input with conversation context
-            full_input = conversation_context + req.prompt if conversation_context else req.prompt
-            
-            # Use run_streamed and handle the events properly
-            runner = Runner.run_streamed(agent, input=full_input)
-            
-            # Process streaming events
-            async for event in runner.stream_events():
-                print(f"Event type: {event.type}, Event data type: {type(event)}")
-                
-                if event.type == "raw_response_event" and isinstance(event.data, ResponseTextDeltaEvent):
-                    # Get the delta text from the ResponseTextDeltaEvent
-                    delta_text = event.data.delta
-                    print(f"Delta text: '{delta_text}'")
-                    if delta_text and delta_text.strip():
-                        assistant_response += delta_text
-                        yield f"data: {delta_text}\n\n"
-            
-            # Fallback: If no streaming content was received, get the final result
-            if not assistant_response:
-                try:
-                    # Get the final result from the streaming runner
-                    final_result = await runner
-                    final_response = str(final_result)
-                    
-                    # Stream the response word by word
-                    words = final_response.split()
-                    for word in words:
-                        assistant_response += word + " "
-                        yield f"data: {word} \n\n"
-                        await asyncio.sleep(0.05)
-                except Exception as e:
-                    print(f"Error getting final result: {e}")
-                    yield f"data: Error: Could not get response\n\n"
-            
-            # Save complete assistant response after streaming
+
+            # Only pass the latest user message
+            message = TextMessage(content=req.prompt, source="user")
+
+            # Use the streaming method
+            cancellation_token = CancellationToken()
+            async for event in openai_agent.on_messages_stream([message], cancellation_token=cancellation_token):
+                # Each event is a ModelClientStreamingChunkEvent
+                if hasattr(event, "content") and event.content:
+                    assistant_response += event.content
+                    yield f"data: {event.content}\n\n"
+
+            # Save the full assistant response after streaming
             if assistant_response:
-                # Create new DB session for saving final response
                 async with AsyncSessionLocal() as save_db:
                     await save_message(save_db, req.conv_id, "assistant", assistant_response)
-            
-            # Send end-of-stream signal
+
             yield "data: [DONE]\n\n"
-                    
+
         except Exception as e:
+            print(f"Error in streaming: {e}")
             yield f"data: Error: {str(e)}\n\n"
 
     return StreamingResponse(event_generator(), media_type="text/event-stream")
@@ -490,16 +473,22 @@ async def generate_conversation_title(
     
     try:
         # Create title generation agent
-        title_agent = Agent(
+        openai_client = OpenAIChatCompletionClient(model="gpt-4o-mini")
+        title_agent = AssistantAgent(
             name="TitleGenerator",
-            instructions="You are a title generation specialist. Based on the conversation content, generate a concise, descriptive title (maximum 50 characters) that captures the main topic or theme of the conversation. Return only the title, nothing else.",
-            model='gpt-4o-mini'
+            model_client=openai_client,
+            system_message="You are a title generation specialist. Based on the conversation content, generate a concise, descriptive title (maximum 50 characters) that captures the main topic or theme of the conversation. Return only the title, nothing else."
         )
         
         # Generate title
-        runner = await Runner.run(title_agent, input=f"Generate a title for this conversation:\n\n{conversation_text}")
-        print(runner)
-        title = str(runner.final_output).strip()
+        message = TextMessage(content=f"Generate a title for this conversation:\n\n{conversation_text}", source="user")
+        cancellation_token = CancellationToken()
+        response = await title_agent.on_messages([message], cancellation_token=cancellation_token)
+        
+        if hasattr(response, 'chat_message') and response.chat_message:
+            title = response.chat_message.content.strip()
+        else:
+            title = "Conversation"
         
         # Clean up the title (remove quotes, extra spaces, etc.)
         title = title.replace('"', '').replace("'", "").strip()
