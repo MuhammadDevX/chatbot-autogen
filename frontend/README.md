@@ -189,6 +189,3 @@ The frontend can be deployed to:
 4. Test thoroughly
 5. Submit a pull request
 
-## License
-
-This project is part of the Chatbot AutoGen application. See main README for license information.
