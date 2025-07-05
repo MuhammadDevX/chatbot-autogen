@@ -1,36 +1,194 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# Chatbot AutoGen Frontend
+
+A modern Next.js frontend for the Chatbot AutoGen application, featuring real-time streaming chat, user authentication, and markdown support.
+
+## Features
+
+- **Real-time Streaming Chat**: Server-Sent Events (SSE) for live AI responses
+- **User Authentication**: JWT-based authentication with protected routes
+- **Markdown Support**: Rich text rendering for AI responses
+- **Conversation Management**: View and manage chat history
+- **Auto-generated Titles**: Conversation titles generated automatically
+- **Responsive Design**: Works on desktop and mobile devices
+- **TypeScript**: Full type safety throughout the application
+
+## Technology Stack
+
+- **Next.js 15**: React framework with App Router
+- **TypeScript**: Type-safe JavaScript development
+- **Tailwind CSS**: Utility-first CSS framework
+- **React Query**: Data fetching and caching
+- **React Markdown**: Markdown rendering with syntax highlighting
+- **Lucide React**: Beautiful icons
+- **UUID**: Unique ID generation
 
 ## Getting Started
 
-First, run the development server:
+### Prerequisites
 
+- Node.js 18+
+- Backend server running (see main README for setup)
+
+### Installation
+
+1. **Install dependencies**:
 ```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+npm install
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+2. **Set up environment variables** in `.env.local`:
+```env
+NEXT_PUBLIC_BACKEND_URL=http://localhost:8000
+```
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+3. **Run the development server**:
+```bash
+npm run dev
+```
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+4. **Open** [http://localhost:3000](http://localhost:3000) in your browser
 
-## Learn More
+## Project Structure
 
-To learn more about Next.js, take a look at the following resources:
+```
+frontend/
+├── app/                    # Next.js App Router
+│   ├── (auth)/            # Authentication pages
+│   ├── (chat)/            # Chat pages
+│   ├── api/               # API routes (proxies to backend)
+│   └── page.tsx           # Home page
+├── components/            # React components
+│   ├── ChatInput.tsx      # Message input component
+│   ├── ChatList.tsx       # Conversation list
+│   ├── MarkdownMessage.tsx # Message rendering
+│   ├── ProtectedRoute.tsx # Auth protection
+│   └── Sidebar.tsx        # Main sidebar
+├── contexts/              # React contexts
+│   └── AuthContext.tsx    # Authentication state
+├── hooks/                 # Custom React hooks
+│   ├── useChatStream.ts   # Streaming chat hook
+│   └── useMessages.ts     # Messages management
+└── lib/                   # Utility functions
+```
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+## Key Components
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+### ChatInput
+- Handles message input and sending
+- Supports Enter key for sending
+- Shows loading state during AI response
 
-## Deploy on Vercel
+### MarkdownMessage
+- Renders user and AI messages differently
+- Supports markdown syntax highlighting
+- Code blocks with language detection
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### useChatStream
+- Manages real-time streaming from backend
+- Handles Server-Sent Events (SSE)
+- Updates UI as chunks arrive
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+### AuthContext
+- Manages authentication state
+- Handles token storage and validation
+- Provides login/logout functionality
+
+## API Integration
+
+The frontend communicates with the backend through Next.js API routes:
+
+- `/api/chat/stream` - Streaming chat responses
+- `/api/chat` - Get conversations list
+- `/api/chat/[id]/messages` - Get conversation messages
+- `/api/chat/[id]/title` - Generate conversation title
+- `/api/auth/*` - Authentication endpoints
+
+## Streaming Implementation
+
+The chat uses Server-Sent Events (SSE) for real-time streaming:
+
+```typescript
+const reader = res.body!.getReader();
+const decoder = new TextDecoder();
+
+while (true) {
+  const { value, done } = await reader.read();
+  if (done) break;
+
+  const chunk = decoder.decode(value);
+  // Process chunk and update UI
+}
+```
+
+Each chunk is processed and added to the current message in real-time.
+
+## Authentication Flow
+
+1. **Sign Up/Sign In**: User authenticates via backend
+2. **Token Storage**: JWT token stored in localStorage
+3. **Protected Routes**: Unauthenticated users redirected to signin
+4. **Auto-login**: Token validated on app startup
+5. **Logout**: Token cleared and user redirected
+
+## Styling
+
+The application uses Tailwind CSS for styling with:
+- Responsive design patterns
+- Dark/light mode support (via CSS variables)
+- Custom component styling
+- Markdown content styling
+
+## Development
+
+### Available Scripts
+
+- `npm run dev` - Start development server
+- `npm run build` - Build for production
+- `npm run start` - Start production server
+- `npm run lint` - Run ESLint
+
+### Environment Variables
+
+- `NEXT_PUBLIC_BACKEND_URL` - Backend server URL
+
+## Deployment
+
+The frontend can be deployed to:
+- **Vercel** (recommended for Next.js)
+- **Netlify**
+- **AWS Amplify**
+- Any static hosting service
+
+### Vercel Deployment
+
+1. Connect your GitHub repository to Vercel
+2. Set environment variables in Vercel dashboard
+3. Deploy automatically on push to main branch
+
+## Troubleshooting
+
+### Common Issues
+
+1. **CORS Errors**: Ensure backend CORS settings include frontend URL
+2. **Authentication Issues**: Check token storage and backend connectivity
+3. **Streaming Problems**: Verify backend streaming endpoint is working
+4. **Build Errors**: Check TypeScript types and dependencies
+
+### Development Tips
+
+- Use browser dev tools to inspect network requests
+- Check console for error messages
+- Verify environment variables are set correctly
+- Test authentication flow in incognito mode
+
+## Contributing
+
+1. Fork the repository
+2. Create a feature branch
+3. Make your changes
+4. Test thoroughly
+5. Submit a pull request
+
+## License
+
+This project is part of the Chatbot AutoGen application. See main README for license information.
